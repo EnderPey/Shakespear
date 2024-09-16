@@ -1,2 +1,2 @@
 # Shakespear
-Transformer Neural Network for Shakespear text
+Transformer Neural Network for Shakespeare text
