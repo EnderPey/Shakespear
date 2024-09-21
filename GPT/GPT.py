@@ -13,10 +13,34 @@ else:
   device = 'cpu'
 print(device)
 
-iterations = 2000
-
+iterations = 4000
+training = False
 #------------------
 
+@dataclass
+class Config:
+  block_size: int = 64 # max sequence length
+  vocab_size: int = 50304 # number of tokens: 50,000 BPE merges + 256 bytes tokens + 1 <|endoftext|> token
+  n_layer: int = 4 # number of layers
+  n_head: int = 4 # number of heads
+  n_embd: int = 128 # embedding dimension
+  dropout = 0.1
+
+
+max_lr = 6e-4
+min_lr = max_lr * 0.1
+warmup_steps = iterations * 0.25
+max_steps = iterations
+
+lr_list = []
+loss_list = []
+val_loss_list = []
+
+total_batch_size = 4096
+B = 8 # micro batch size
+T = Config.block_size # sequence length
+assert total_batch_size % (B * T) == 0
+grad_accum_steps = total_batch_size // (B * T)
 
 class DataLoader():
   def __init__(self, B, T, split):
@@ -31,7 +55,7 @@ class DataLoader():
     if split == "train":
       self.tokens = self.tokens[:int(0.9 * len(self.tokens))]
     else:
-      self.tokens = self.tokens[int(0.98 * len(self.tokens)):]
+      self.tokens = self.tokens[int(0.9 * len(self.tokens)):]
     print(f"len of {split} tokens: {len(self.tokens)}")
     self.current_position = 0
   def next_batch(self):
@@ -53,6 +77,7 @@ class CasualSelfAttention(nn.Module):
     assert config.n_embd % config.n_head == 0
     self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd)
     self.c_proj = nn.Linear(config.n_embd, config.n_embd)
+    self.dropout = nn.Dropout(config.dropout)
     self.c_proj.GPT_SCALE_INIT = 1
     self.n_head = config.n_head
     self.n_embd = config.n_embd
@@ -66,16 +91,11 @@ class CasualSelfAttention(nn.Module):
     q = q.view(B,T, self.n_head, C // self.n_head).transpose(1,2)
     v = v.view(B,T, self.n_head, C // self.n_head).transpose(1,2)
 
-
-    # att = (q @ k.transpose(-2,-1)) * (1.0 / math.sqrt(k.size(-2)))
-    # att = att.masked_fill(self.mask[:,:,:T,:T] == 0, float("-inf"))
-    # att = F.softmax(att, dim=-1)
-    # y = att @ v
-
     y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
 
     y = y.transpose(1,2).contiguous().view(B,T,C)
     y = self.c_proj(y)
+    y = self.dropout(y)
     return y
 
 class MLP(nn.Module):
@@ -84,12 +104,14 @@ class MLP(nn.Module):
     self.c_fc = nn.Linear(config.n_embd,4 * config.n_embd)
     self.gelu = nn.GELU()
     self.c_proj = nn.Linear(4 * config.n_embd,config.n_embd)
+    self.dropout = nn.Dropout(config.dropout)
     self.c_proj.GPT_SCALE_INIT = 1
 
   def forward(self, x):
     x = self.c_fc(x)
     x = self.gelu(x)
     x = self.c_proj(x)
+    x = self.dropout(x)
     return x
 
 class Block(nn.Module):
@@ -104,14 +126,6 @@ class Block(nn.Module):
     x = x + self.sa(self.ln1(x))
     x = x + self.feed_forward(self.ln2(x))
     return x
-
-@dataclass
-class Config:
-  block_size: int = 1024 # max sequence length
-  vocab_size: int = 50257 # number of tokens: 50,000 BPE merges + 256 bytes tokens + 1 <|endoftext|> token
-  n_layer: int = 12 # number of layers
-  n_head: int = 12 # number of heads
-  n_embd: int = 768 # embedding dimension
 
 
 
@@ -169,28 +183,45 @@ class GPT(nn.Module):
   def generate(self, text, num_sequences, max_length):
     enc = tiktoken.get_encoding('gpt2')
     tokens = enc.encode(text)
-    tokens = torch.tensor(tokens, dtype=torch.long) # (8,)
-    tokens = tokens.unsqueeze(0).repeat(num_sequences, 1) # (5, 8)
+    tokens = torch.tensor(tokens, dtype=torch.long)  # encode text
+    tokens = tokens.unsqueeze(0).repeat(num_sequences, 1)  # repeat for num_sequences
     x = tokens.to(device)
-    while x.size(1) < max_length:
-      with torch.no_grad():
-        logits, loss = self(x) 
-        
-        logits = logits[:, -1, :] 
-        # get the probabilities
-        probs = F.softmax(logits, dim=-1)
-        
-        topk_probs, topk_indices = torch.topk(probs, 50, dim=-1)
-        ix = torch.multinomial(topk_probs, 1) # (B, 1)
-        # gather the corresponding indices
-        xcol = torch.gather(topk_indices, -1, ix) # (B, 1)
-        # append to the sequence
-        x = torch.cat((x, xcol), dim=1)
 
+    output = ["" for i in range(num_sequences)]
+
+    generated_length = tokens.size(1)
+    
+    while generated_length < max_length:
+        # Ensure that the input does not exceed block_size for each iteration
+        # Take the last block_size tokens (or fewer if fewer tokens exist)
+        input_tokens = x[:, -self.config.block_size:] 
+
+        with torch.no_grad():
+            logits, loss = self(input_tokens)  # forward pass
+            
+            # Get the logits of the last token
+            logits = logits[:, -1, :]
+            
+            # Get the probabilities using softmax
+            probs = F.softmax(logits, dim=-1)
+            
+            # Sample the next token
+            topk_probs, topk_indices = torch.topk(probs, 50, dim=-1)  # sample from top-k
+            ix = torch.multinomial(topk_probs, 1)  # sample next token
+            xcol = torch.gather(topk_indices, -1, ix)  # get the actual token index
+            
+            # Append the generated token to the sequence
+            x = torch.cat((x, xcol), dim=1)
+            generated_length += 1  # increase the generated length
+
+    # Decoding the generated tokens
     for i in range(num_sequences):
-      tokens = x[i, :max_length].tolist()
-      decoded = enc.decode(tokens)
-      print(">", decoded)
+        tokens = x[i, :max_length].tolist()
+        decoded = enc.decode(tokens)
+        output[i] = decoded
+        # print(output[i])
+    return output
+  
 
   def configure_optimizers(self, weight_decay, learning_rate, device_type):
         # start with all of the candidate parameters (that require grad)
@@ -215,10 +246,6 @@ class GPT(nn.Module):
      
 
 
-max_lr = 6e-4
-min_lr = max_lr * 0.1
-warmup_steps = 10
-max_steps = 50 
 def get_lr(iteration):
    
     if iteration < warmup_steps:
@@ -250,105 +277,113 @@ def load_checkpoint(checkpoint_path, model, optimizer=None):
     if optimizer:  # Load optimizer state if provided (for resuming training)
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-    start_epoch = checkpoint['epoch']
+    iteration = checkpoint['iteration']
     loss_list = checkpoint.get('loss_list', [])  # Load loss list (default to empty if not present)
-    val_loss_list = checkpoint.get('val_loss_list', [])  # Load validation loss list if available
+    val_loss_list = checkpoint.get('val_list', [])  # Load validation loss list if available
     lr_list = checkpoint.get('lr_list', [])  # Load learning rate history
 
-    print(f"Checkpoint loaded from epoch {start_epoch}")
-    return start_epoch, loss_list, val_loss_list, lr_list
-
-total_batch_size = 262144 # 2**19, ~0.5M, in number of tokens
-B = 64 # micro batch size
-T = 1024 # sequence length
-assert total_batch_size % (B * T) == 0
-grad_accum_steps = total_batch_size // (B * T)
+    print(f"Checkpoint loaded from iteration {iteration}")
+    return iteration, loss_list, val_loss_list, lr_list
 
 
-train_loader = DataLoader(16, 256, split="train")
-val_loader = DataLoader(B=16, T=256, split="val")
 
 
-model = GPT(Config(vocab_size=50304))
+train_loader = DataLoader(B, T, split="train")
+val_loader = DataLoader(B, T, split="val")
+
+
+model = GPT(Config)
 m = model.to(device)
 
 print(sum(p.numel() for p in m.parameters())/1e6, 'M parameters')
 
-# optimizer = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.95), eps = 1e-8)
 optimizer = model.configure_optimizers(0.1, 6e-4, device)
 
-lr_list = []
-loss_list = []
-val_loss_list = []
 
 
+done_iteration, loss_list, val_loss_list, lr_list = load_checkpoint("GPT/checkpoint_epoch_3999.pth", model, optimizer)
+# done_iteration = 1
+if training:
+  for iter in range(done_iteration, iterations):
 
-for iter in range(iterations):
+    
+    t0 = time.time()
 
+    if iter % 100 == 0 or iter == iterations -1:
+      model.eval()
+      with torch.no_grad():
+        val_loss_accum = 0.0
+        val_loss_steps = 20
+        for _ in range(val_loss_steps):
+            x, y = val_loader.next_batch()
+            x, y = x.to(device), y.to(device)
+            logits, loss = model(x, y)
+            loss = loss / val_loss_steps
+            val_loss_accum += loss.item()
+        val_loss_list.append(val_loss_accum)
+      checkpoint_path = f'GPT/GPTlogs/checkpoint_epoch_{iter}.pth'
+      save_checkpoint(model, optimizer, iter, loss_list, val_loss_list, lr_list, checkpoint_path)
+      print("Val loss: " + str(val_loss_accum))
+      model.generate("The Queen: ", 5, 50)
+
+    model.train()
+
+    optimizer.zero_grad()
+    loss_accum = 0.0
+
+    for micro_step in range(grad_accum_steps):
+      x, y = train_loader.next_batch()
+      x, y = x.to(device), y.to(device)
+      logits, loss = model(x, y)
+      loss = loss / grad_accum_steps
+      loss_accum += loss.item()
+      loss.backward()
+    
+    norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+    lr = get_lr(iter)
+    lr_list.append(lr)
+    loss_list.append(loss_accum)
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+
+    optimizer.step()
+    torch.mps.synchronize()
+    t1 = time.time()
+    difT = (t1 - t0) * 1000
+    tokens_per_sec = (train_loader.B * train_loader.T) / (t1 - t0)
   
-  t0 = time.time()
+    print(f"step {iter}, loss: {loss_accum}, norm: {norm:.2f}, lr: {lr} time: {difT:.2f} ms, tokens/sec: {tokens_per_sec:.2f}")
 
-  if iter % 200 == 0:
-    model.eval()
-    with torch.no_grad():
-      val_loss_accum = 0.0
-      val_loss_steps = 20
-      for _ in range(val_loss_steps):
-          x, y = val_loader.next_batch()
-          x, y = x.to(device), y.to(device)
-          logits, loss = model(x, y)
-          loss = loss / val_loss_steps
-          val_loss_accum += loss.detach()
-      val_loss_list.append(val_loss_accum.item())
-    checkpoint_path = f'GPT/GPTlogs/checkpoint_epoch_{iter}.pth'
-    save_checkpoint(model, optimizer, iter, loss_list, val_loss_list, lr_list, checkpoint_path)
-  if iter % 500 == 0 and iter > 0:
-    model.eval()
-    model.generate("The Queen: ", 5, 30)
-
-  model.train()
-
-  optimizer.zero_grad()
-  loss_accum = 0.0
-
-  for micro_step in range(grad_accum_steps):
-    x, y = train_loader.next_batch()
-    x, y = x.to(device), y.to(device)
-    logits, loss = model(x, y)
-    loss = loss / grad_accum_steps
-    loss_accum += loss.detach()
-    loss.backward()
+if not training:
   
-  norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-  lr = get_lr(iter)
-  lr_list.append(lr)
-  loss_list.append(loss_accum.item())
-  for param_group in optimizer.param_groups:
-      param_group['lr'] = lr
-
-  optimizer.step()
-  torch.mps.synchronize()
-  t1 = time.time()
-  difT = (t1 - t0) * 1000
-  tokens_per_sec = (train_loader.B * train_loader.T) / (t1 - t0)
- 
-  print(f"step {iter}, loss: {loss_accum.item()}, norm: {norm:.2f}, lr: {lr} time: {difT:.2f} ms, tokens/sec: {tokens_per_sec:.2f}")
+  model.eval()
+  with torch.no_grad():
+    val_loss_accum = 0.0
+    val_loss_steps = 20
+    for _ in range(val_loss_steps):
+        x, y = val_loader.next_batch()
+        x, y = x.to(device), y.to(device)
+        logits, loss = model(x, y)
+        loss = loss / val_loss_steps
+        val_loss_accum += loss.detach()
+    print("Val loss: " + str(val_loss_accum))
 
 
 
-# torch.save(model.state_dict(), "Tokenized_model.pth")
+# import matplotlib.pyplot as plt
 
-import matplotlib.pyplot as plt
+# fig, axs = plt.subplots(2)
+# fig.suptitle('Vertically stacked subplots')
+# axs[0].plot(loss_list)
+# axs[0].set_title("Loss list")
+# axs[1].plot(val_loss_list)
+# axs[1].set_title("Val loss list")
 
-plt.plot(loss_list, label='Training Loss')
 
-# Adding title and labels
-plt.title('Training Loss Over Time')
-plt.xlabel('Epoch')
-plt.ylabel('Loss')
 
-# Add legend
-plt.legend()
+# plt.show()
 
-# Show the plot
-plt.show()
+
+f = open("output.txt", "w")
+f.write(model.generate("The Queen: ", 1, 10000)[0])
+f.close()
