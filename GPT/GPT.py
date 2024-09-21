@@ -370,20 +370,37 @@ if not training:
 
 
 
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
-# fig, axs = plt.subplots(2)
-# fig.suptitle('Vertically stacked subplots')
-# axs[0].plot(loss_list)
-# axs[0].set_title("Loss list")
-# axs[1].plot(val_loss_list)
-# axs[1].set_title("Val loss list")
+# Create a figure and subplots
+fig, axs = plt.subplots(2, figsize=(10, 6))  # Adjust figure size for better spacing
+fig.suptitle('Training and Validation Loss', fontsize=16, weight='bold', y=1.05)  # Title for the entire figure
+
+# Plotting Loss list
+axs[0].plot(loss_list, color='b', linestyle='-', linewidth=2)
+axs[0].set_title("Training Loss", fontsize=14)
+axs[0].set_xlabel('Epochs', fontsize=12)
+axs[0].set_ylabel('Loss', fontsize=12)
+axs[0].grid(True, linestyle='--', alpha=0.6)  # Add gridlines
+
+# Plotting Validation Loss list
+axs[1].plot(val_loss_list, color='r', linestyle='-', linewidth=2)
+axs[1].set_title("Validation Loss", fontsize=14)
+axs[1].set_xlabel('Epochs', fontsize=12)
+axs[1].set_ylabel('Loss', fontsize=12)
+axs[1].grid(True, linestyle='--', alpha=0.6)  # Add gridlines
+
+# Tighten the layout to avoid overlap
+plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust rect to give space for suptitle
+
+# Save the figure
+plt.savefig('GPT/loss_plot.png', dpi=300, bbox_inches='tight')  # Save as PNG with high DPI for quality
+
+# Show the plot
+plt.show()
 
 
 
-# plt.show()
-
-
-f = open("output.txt", "w")
-f.write(model.generate("The Queen: ", 1, 10000)[0])
-f.close()
+# f = open("output.txt", "w")
+# f.write(model.generate("The Queen: ", 1, 10000)[0])
+# f.close()
