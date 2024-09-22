@@ -11,27 +11,27 @@ The Transformer architecture is composed of a series of blocks that include mult
 
 Here are the key hyperparameters used for training the BigramModel:
 
-batch_size = 64
-block_size = 256
-max_iters = 5000
-learning_rate = 3e-4
-n_embd = 384
-n_head = 6
-n_layer = 6
-dropout = 0.2
+ - batch_size = 64
+ - block_size = 256
+ - max_iters = 5000
+ - learning_rate = 3e-4
+ - n_embd = 384
+ - n_head = 6
+ - n_layer = 6
+ - dropout = 0.2
 
 The model was trained using the [AdamW](https://pytorch.org/docs/stable/generated/torch.optim.AdamW.html)
  optimizer.
 
 Here are the key hyperparameters used for training the GPTModel:
 
-block_size: int = 64 
-vocab_size: int = 50304 
-n_layer: int = 4 
-n_head: int = 4 
-n_embd: int = 128 
-dropout = 0.1
-iterations = 4000
+ - block_size: int = 64 
+ - vocab_size: int = 50304 
+ - n_layer: int = 4 
+ - n_head: int = 4 
+ - n_embd: int = 128 
+ - dropout = 0.1
+ - iterations = 4000
 Cosine decay learning rate with max lr = 6e-4, min lr being 10 percent of that, and warmups steps being the first 25% of iterations.
 
 The model was trained using the [AdamW](https://pytorch.org/docs/stable/generated/torch.optim.AdamW.html)
