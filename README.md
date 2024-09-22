@@ -1,5 +1,5 @@
-#Shakespeare Language Model
-- **These models are based on https://github.com/karpathy/build-nanogpt/blob/master/train_gpt2.py and the rest of his Zero to Hero series**
+# Shakespeare Language Model
+- **These models are based on https://github.com/karpathy/build-nanogpt/blob/master/train_gpt2.py and the rest of Andrej Karpathy's Zero to Hero series**
 
 This repository contains a character-based and token language model trained on a dataset of Shakespeare's works. The model is built using the Transformer architecture, implemented in PyTorch.
 
@@ -69,7 +69,12 @@ The trained model can be used to generate text by providing a context as input a
 
 The GPTmodel can also generate any number of sequence simultaneously.
 
-##Challenges
+## Challenges
+### Learning how to read documentation and api implementation so I could optimize the model to run on my Macbook M2 chip.
+
+### Scaling down the GPTmodel in order to prevent overfitting and my validation losses from increasing.
+
+## Chopping up the training in smaller batches by using checkpoints and loading the model back in to resume training
 
 ## Lessons Learned
   
