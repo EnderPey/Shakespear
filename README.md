@@ -50,7 +50,7 @@ Each Transformer block consists of two main components:
   
 2. Feedforward layers: Each Transformer block also contains a feedforward sub-layer that consists of two linear layers with a ReLU activation function for the Bigram model and a GELU activation function in between them. This sub-layer helps the model learn more complex relationships between the input characters.
   
-The output of each Transformer block is then passed to the next block, allowing the model to learn increasingly abstract relationships between the characters.
+The output of each Transformer block is then passed to the next block, allowing the model to learn increasingly abstract relationships between the characters. Both components contain a trainable dropout layer that helps with overfitting and adaptation.
 
 ### Final Layer Normalization and Linear Projection
 After passing through all the Transformer blocks, the embeddings undergo a final layer normalization to ensure their values are on a similar scale. The normalized embeddings are then passed through a linear layer that projects them onto the output vocabulary size, resulting in logits for each possible character.
