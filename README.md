@@ -66,6 +66,7 @@ The gradients of the loss with respect to the model's parameters are computed us
 During training, the model's performance is regularly evaluated on both the training and validation datasets. This helps to monitor the model's progress and detect any signs of overfitting. The evaluation process involves estimating the average loss over a fixed number of iterations for both the training and validation sets.
 
 Here is the training and validation loss graph for the GPTmodel:
+![alt text](https://github.com/EnderPey/[Shakespeare/blob/main/GPT/loss_plot.png?raw=true)
 
 
 ## Text Generation
