@@ -32,6 +32,7 @@ Here are the key hyperparameters used for training the GPTModel:
  - n_embd: int = 128 
  - dropout = 0.1
  - iterations = 4000
+
 Cosine decay learning rate with max lr = 6e-4, min lr being 10 percent of that, and warmups steps being the first 25% of iterations.
 
 The model was trained using the [AdamW](https://pytorch.org/docs/stable/generated/torch.optim.AdamW.html)
@@ -64,17 +65,23 @@ The gradients of the loss with respect to the model's parameters are computed us
 ## Evaluation
 During training, the model's performance is regularly evaluated on both the training and validation datasets. This helps to monitor the model's progress and detect any signs of overfitting. The evaluation process involves estimating the average loss over a fixed number of iterations for both the training and validation sets.
 
+Here is the training and validation loss graph for the GPTmodel:
+
+
 ## Text Generation
 The trained model can be used to generate text by providing a context as input and specifying the desired number of new tokens to generate. The model outputs logits for the next character, which are then converted to probabilities using the softmax function. A character is sampled from the probability distribution, and the process is repeated until the desired number of characters is generated.
 
 The GPTmodel can also generate any number of sequence simultaneously.
 
+I have example outputs for each model listed in the repositorie for anyone curious
+
 ## Challenges
-### Learning how to read documentation and api implementation so I could optimize the model to run on my Macbook M2 chip.
 
-### Scaling down the GPTmodel in order to prevent overfitting and my validation losses from increasing.
+ - Learning how to read documentation and api implementation so I could optimize the model to run on my Macbook M2 chip.
 
-## Chopping up the training in smaller batches by using checkpoints and loading the model back in to resume training
+ -  Scaling down the GPTmodel in order to prevent overfitting and my validation losses from increasing.
+
+ -  Chopping up the training in smaller batches by using checkpoints and loading the model back in to resume training
 
 ## Lessons Learned
   
