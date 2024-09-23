@@ -58,7 +58,7 @@ After passing through all the Transformer blocks, the embeddings undergo a final
 ## Training
 The model is trained using a batched approach, where it processes multiple independent sequences in parallel. At each iteration, a batch of input sequences and their corresponding target sequences are sampled from the training data. The model computes the logits for the input sequences, and the loss is calculated using cross-entropy between the logits and the target sequences.
 
-For the GPTmodel, I implemented batch accumelation where I simulated large match sizes by acumelating losses together. This allows me to use larger batch sizes and sequence lengths without using a larger memory and instead sacrifising it for time training.
+For the GPT model, I implemented batch accumulation, simulating large batch sizes by accumulating losses across iterations. This allows me to use larger batch sizes and sequence lengths without using a larger memory and instead sacrifising it for time training.
 
 The gradients of the loss with respect to the model's parameters are computed using backpropagation, and the optimizer updates the model's weights accordingly.
 
@@ -74,15 +74,15 @@ The trained model can be used to generate text by providing a context as input a
 
 The GPTmodel can also generate any number of sequence simultaneously.
 
-I have example outputs for each model listed in the repositorie for anyone curious
+I have example outputs for each model listed in the repository for anyone curious
 
 ## Challenges
 
- - Learning how to read documentation and api implementation so I could optimize the model to run on my Macbook M2 chip.
+ - Optimizing Model for Macbook M2 Chip
 
- -  Scaling down the GPTmodel in order to prevent overfitting and my validation losses from increasing.
+ -  Preventing overfitting
 
- -  Chopping up the training in smaller batches by using checkpoints and loading the model back in to resume training
+ -  Using chekcpoints to handle large amounts of training
 
 ## Lessons Learned
   
@@ -96,9 +96,9 @@ Implementing the Transformer architecture helped gain a deeper understanding of 
  ### 3. OpenAI API
  Working with the OpenAI api tokenizer in order to encode and decode my dataset allowing the model to process and understand a lot more.
  
-### 3. Dataset splitting and evaluation
+### 4. Dataset splitting and evaluation
  Splitting the dataset into training and validation sets, and regularly evaluating the model's performance on both sets, helped monitor the model's generalization capabilities and prevent overfitting.
 
   
-### 4. Text generation
+### 5. Text generation
 Implementing the model's text generation functionality provided experience in working with the softmax function, sampling from a probability distribution, and concatenating the generated tokens to create the final output.
